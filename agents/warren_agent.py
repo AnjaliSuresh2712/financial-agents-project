@@ -1,0 +1,70 @@
+from langchain.schema import SystemMessage, HumanMessage
+from langchain_openai import ChatOpenAI
+import os
+import json 
+
+# data helpers
+from data_api import (
+    get_stock_prices,
+    get_financial_metrics,
+    get_line_items,
+    get_insider_trades,
+    get_news,
+    get_company_facts,
+)
+
+# Set up the LLM from OpenRouter
+# Uses gpt-3.5-turbo model via OpenRouter.
+# Points to OpenRouter’s API endpoint, which proxies requests to the gpt model.
+llm_warren = ChatOpenAI(
+    model="gpt-3.5-turbo",
+    openai_api_base="https://openrouter.ai/api/v1",
+    openai_api_key=os.environ["OPENROUTER_API_KEY"]
+)
+
+def summarize_stock_data(ticker, prices, metrics, items, trades, news, facts) -> str:
+  give_this_prompt = (
+        f"Summarize the following financial info for {ticker} in 6–8 short bullets. "
+        f"Only include facts that affect an invest / don't invest decision.\n\n"
+        f"- Recent Prices (trend/range):\n{json.dumps(prices)[:900]}\n"
+        f"- Financial Metrics:\n{json.dumps(metrics)[:900]}\n"
+        f"- Line Items:\n{json.dumps(items)[:900]}\n"
+        f"- Insider Trades:\n{json.dumps(trades)[:900]}\n"
+        f"- Recent News:\n{json.dumps(news)[:900]}\n"
+        f"- Company Facts:\n{json.dumps(facts)[:900]}\n"
+    )
+    return llm_warren.invoke([HumanMessage(content=give_this_prompt)]).content
+
+# Will pull the data, summarize it, then asks Warren Buffet for a recommendation.
+# (can change dates/interval later)
+def warren_agent(ticker: str) -> str:
+  prices  = get_stock_prices(
+        ticker, interval="day", interval_multiplier=1,
+        start_date="2025-01-01", end_date="2025-08-10"
+    )
+    metrics = get_financial_metrics(ticker, period="ttm")
+    items   = get_line_items(ticker)
+    trades  = get_insider_trades(ticker)
+    news    = get_news(ticker)
+    facts   = get_company_facts(ticker)
+
+  data_summary = _summarize_financials_for_context(
+        ticker, prices, metrics, items, trades, news, facts
+    )
+
+  system = SystemMessage(
+        content="Answer as Warren Buffett who is my financial advisor."
+    )
+
+  user = HumanMessage(
+        content=(
+            f"Here’s a short summary of {ticker}:\n{data_summary}\n\n"
+            f"Based on this, should I invest in {ticker}? "
+            f"Give a clear Yes/No leaning plus 3 concise reasons."
+        )
+    )
+
+  return llm_warren.invoke([system, user]).content
+  
+
+
