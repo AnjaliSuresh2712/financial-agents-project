@@ -26,9 +26,12 @@ def run_all_agents(ticker: str, question: str):
     except Exception as e:
         print(f"[Robin error] {e}")
 
-# example
+# run
 if __name__ == "__main__":
-    run_all_agents("AAPL", "Should I invest in AAPL?")
-    run_all_agents("TSLA", "Should I invest in TSLA?")
+    ticker = input("Enter a stock ticker symbol (e.g., AAPL): ")
+    question = input("Enter your financial question: ")
+    run_all_agents(ticker, question)
+
+
 
 
