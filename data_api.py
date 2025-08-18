@@ -11,38 +11,31 @@ def get_stock_prices(ticker: str, interval="day", interval_multiplier=1, start_d
     }
     params = {k: v for k, v in params.items() if v is not None}
     r = requests.get(url, params=params)
-    if r.status_code == 200:
-        return r.json()
-    print("Error:", r.status_code, r.text)
-    return None
+    return r.json() if r.status_code == 200 else None
 
-def get_financial_metrics(ticker: str, period="annual"):
+def get_financial_metrics(ticker: str, period="ttm"):
     url = "https://api.financialdatasets.ai/financial-metrics"
     params = {"ticker": ticker, "period": period}
     r = requests.get(url, params=params)
-    return r.json()
+    return r.json() if r.status_code == 200 else None
 
 def get_line_items(ticker):
     url = "https://api.financialdatasets.ai/financials/search/line-items"
-    params = {"ticker": ticker}
-    r = requests.get(url, params=params)
+    r = requests.get(url, params={"ticker": ticker})
     return r.json()
 
 def get_insider_trades(ticker):
     url = "https://api.financialdatasets.ai/insider-trades"
-    params = {"ticker": ticker}
-    r = requests.get(url, params=params)
+    r = requests.get(url, params={"ticker": ticker})
     return r.json()
 
 def get_news(ticker):
     url = "https://api.financialdatasets.ai/news/"
-    params = {"ticker": ticker}
-    r = requests.get(url, params=params)
+    r = requests.get(url, params={"ticker": ticker})
     return r.json()
 
 def get_company_facts(ticker):
     url = "https://api.financialdatasets.ai/company/facts/"
-    params = {"ticker": ticker}
-    r = requests.get(url, params=params)
+    r = requests.get(url, params={"ticker": ticker})
     return r.json()
-  
+
