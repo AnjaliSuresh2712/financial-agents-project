@@ -1,13 +1,14 @@
 import os
+from agents.warren_agent import warren_agent
 from agents.bill_agent import bill_agent
 from agents.robin_agent import robin_agent
-from agents.warren_agent import warren_agent
 
 def divider(title: str):
     print("\n" + "=" * 12 + f" {title} " + "=" * 12)
 
 def run_all_agents(ticker: str, question: str):
     divider(f"Question: {question} | Ticker: {ticker}")
+    
     try:
         divider("Warren Buffett")
         print(warren_agent(ticker))
@@ -26,11 +27,15 @@ def run_all_agents(ticker: str, question: str):
     except Exception as e:
         print(f"[Robin error] {e}")
 
-# run
+# test cases for now
 if __name__ == "__main__":
-    ticker = input("Enter a stock ticker symbol (e.g., AAPL): ")
-    question = input("Enter your financial question: ")
-    run_all_agents(ticker, question)
+    test_cases = [
+        ("AAPL", "Should I invest in Apple?"),
+        ("TSLA", "Should I invest in Tesla?"),
+        ("AMZN", "Should I buy Amazon stock right now?")
+    ]
+    for ticker, question in test_cases:
+        run_all_agents(ticker, question)
 
 
 
