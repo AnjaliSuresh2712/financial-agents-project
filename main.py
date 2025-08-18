@@ -1,15 +1,34 @@
-!pip install -q langchain openai langchain-community langchain-openai
-# Set API key
-# key is used to authenticate requests to OpenRouter’s API.
 import os
-from langchain_openai import ChatOpenAI
-from langchain.agents import initialize_agent, AgentType, tool
-
-os.environ["OPENROUTER_API_KEY"] = "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"  
-
-# Import agents
 from agents.warren_agent import warren_agent
 from agents.bill_agent import bill_agent
 from agents.robin_agent import robin_agent
+
+def divider(title: str):
+    print("\n" + "=" * 12 + f" {title} " + "=" * 12)
+
+def run_all_agents(ticker: str, question: str):
+    divider(f"Question: {question} | Ticker: {ticker}")
+    try:
+        divider("Warren Buffett")
+        print(warren_agent(ticker))
+    except Exception as e:
+        print(f"[Warren error] {e}")
+
+    try:
+        divider("Bill Ackman")
+        print(bill_agent(ticker))
+    except Exception as e:
+        print(f"[Bill error] {e}")
+
+    try:
+        divider("Robinhood")
+        print(robin_agent(ticker))
+    except Exception as e:
+        print(f"[Robin error] {e}")
+
+# example
+if __name__ == "__main__":
+    run_all_agents("AAPL", "Should I invest in AAPL?")
+    run_all_agents("TSLA", "Should I invest in TSLA?")
 
 
