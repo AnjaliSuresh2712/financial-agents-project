@@ -1,7 +1,6 @@
 from langchain.schema import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
-import os
-import json 
+import os, json
 
 # data helpers
 from data_api import (
@@ -16,14 +15,19 @@ from data_api import (
 # Set up the LLM from OpenRouter
 # Uses gpt-3.5-turbo model via OpenRouter.
 # Points to OpenRouter’s API endpoint, which proxies requests to the gpt model.
-llm_warren = ChatOpenAI(
-    model="gpt-3.5-turbo",
-    openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key=os.environ["OPENROUTER_API_KEY"]
-)
+def _make_llm():
+    """Construct the LLM client using env vars."""
+    return ChatOpenAI(
+        model="gpt-3.5-turbo",
+        api_key=os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY"),
+        base_url=os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1"),
+    )
+
+llm_warren = _make_llm()
 
 def summarize_stock_data(ticker, prices, metrics, items, trades, news, facts) -> str:
-  give_this_prompt = (
+    """Summarize the fetched stock data to keep the prompt short."""
+    prompt = (
         f"Summarize the following financial info for {ticker} in 6–8 short bullets. "
         f"Only include facts that affect an invest / don't invest decision.\n\n"
         f"- Recent Prices (trend/range):\n{json.dumps(prices)[:900]}\n"
@@ -33,11 +37,12 @@ def summarize_stock_data(ticker, prices, metrics, items, trades, news, facts) ->
         f"- Recent News:\n{json.dumps(news)[:900]}\n"
         f"- Company Facts:\n{json.dumps(facts)[:900]}\n"
     )
-    return llm_warren.invoke([HumanMessage(content=give_this_prompt)]).content
+    return llm_warren.invoke([HumanMessage(content=prompt)]).content
 
 # Will pull the data, summarize it, then asks Warren Buffet for a recommendation.
 # (can change dates/interval later)
 def warren_agent(ticker: str) -> str:
+    """Pull data, summarize it, then ask 'Warren agent' for a recommendation."""
     prices  = get_stock_prices(ticker, "day", 1, "2025-01-01", "2025-08-01")
     metrics = get_financial_metrics(ticker, "ttm")
     items   = get_line_items(ticker)
@@ -48,9 +53,10 @@ def warren_agent(ticker: str) -> str:
     data_summary = summarize_stock_data(ticker, prices, metrics, items, trades, news, facts)
 
     system = SystemMessage(content="Answer as if you are Warren Buffett, my financial advisor.")
-    user = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
-    
+    user   = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
     return llm_warren.invoke([system, user]).content
+
+
 
 
 
