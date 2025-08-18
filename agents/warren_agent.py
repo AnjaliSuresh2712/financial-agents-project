@@ -38,33 +38,19 @@ def summarize_stock_data(ticker, prices, metrics, items, trades, news, facts) ->
 # Will pull the data, summarize it, then asks Warren Buffet for a recommendation.
 # (can change dates/interval later)
 def warren_agent(ticker: str) -> str:
-  prices  = get_stock_prices(
-        ticker, interval="day", interval_multiplier=1,
-        start_date="2025-01-01", end_date="2025-08-10"
-    )
-    metrics = get_financial_metrics(ticker, period="ttm")
+    prices  = get_stock_prices(ticker, "day", 1, "2025-01-01", "2025-08-01")
+    metrics = get_financial_metrics(ticker, "ttm")
     items   = get_line_items(ticker)
     trades  = get_insider_trades(ticker)
     news    = get_news(ticker)
     facts   = get_company_facts(ticker)
 
-  data_summary = _summarize_financials_for_context(
-        ticker, prices, metrics, items, trades, news, facts
-    )
+    data_summary = summarize_stock_data(ticker, prices, metrics, items, trades, news, facts)
 
-  system = SystemMessage(
-        content="Answer as Warren Buffett who is my financial advisor."
-    )
+    system = SystemMessage(content="Answer as if you are Warren Buffett, my financial advisor.")
+    user = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
+    
+    return llm_warren.invoke([system, user]).content
 
-  user = HumanMessage(
-        content=(
-            f"Here’s a short summary of {ticker}:\n{data_summary}\n\n"
-            f"Based on this, should I invest in {ticker}? "
-            f"Give a clear Yes/No leaning plus 3 concise reasons."
-        )
-    )
-
-  return llm_warren.invoke([system, user]).content
-  
 
 
