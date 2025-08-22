@@ -1,5 +1,8 @@
-from langchain.schema import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+try:
+    from langchain.schema import SystemMessage, HumanMessage 
+except ImportError:
+    from langchain_core.messages import SystemMessage, HumanMessage
 import os, json
 
 # data helpers
@@ -47,4 +50,5 @@ def bill_agent(ticker: str) -> str:
     system = SystemMessage(content="Answer as if you are a Bill Ackman, my financial advisor.")
     user   = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
     return llm_bill.invoke([system, user]).content
+
 
