@@ -1,4 +1,7 @@
-from langchain.schema import SystemMessage, HumanMessage
+try:
+    from langchain.schema import SystemMessage, HumanMessage 
+except ImportError:
+    from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 import os, json
 
@@ -52,3 +55,4 @@ def robin_agent(ticker: str) -> str:
     system = SystemMessage(content="Answer as if you are a Robinhood-style investing coach, my financial advisor.")
     user   = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
     return llm_robin.invoke([system, user]).content
+
