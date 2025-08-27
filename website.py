@@ -6,9 +6,6 @@ import pandas as pd # makes tables (DataFrames)
 sys.path.append(os.path.dirname(__file__)) # to get local files
 
 from data_api import get_stock_prices
-with st.expander("Debug to see the shape"):
-    st.write(type(prices_json))
-    st.write(str(prices_json)[:1000])
 
 st.set_page_config(page_title="Financial Agent Prototype", layout="wide")
 st.title("AI Stock")
@@ -29,6 +26,10 @@ with st.spinner("Fetching prices…"):
         start_date="2025-01-01",
         end_date=dt.date.today().isoformat()
     )
+
+with st.expander("Debug to see the shape"):
+    st.write(type(prices_json))
+    st.write(str(prices_json)[:1000])
 
 # converts JSON to a DataFrame
 def to_price_df(prices_json):
