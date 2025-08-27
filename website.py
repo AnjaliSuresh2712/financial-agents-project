@@ -1,23 +1,25 @@
 # Prototype for a website through streamlit
 import os, sys, datetime as dt
+sys.path.append(os.path.dirname(__file__))  # to get local files
 import streamlit as st # the website framework
 import matplotlib.pyplot as plt  # makes the chart
 import pandas as pd # makes tables (DataFrames)
-sys.path.append(os.path.dirname(__file__)) # to get local files
 
 from data_api import get_stock_prices
 
 st.set_page_config(page_title="Financial Agent Prototype", layout="wide")
 st.title("AI Stock")
 st.caption("Type a ticker, get prices, and draw a 1-year chart.")
+st.info(f"Running file: {__file__}\nCWD: {os.getcwd()}")
 
 # shows a textbox with "AAPL" as default
 ticker = st.text_input("Input a ticker (e.g., AAPL, TSLA):", value="AAPL").strip().upper()
 if not ticker:
     st.stop()
 
-# calls your data_api.py, asks for daily prices from Jan 1 2025 until today
-# returns a Python dict/list (JSON)
+# calls data_api.py and gets daily prices from Jan 1 2025 until today
+# Returns raw JSON/dict data (list of daily stock prices)
+# loading animation while waiting for the data
 with st.spinner("Fetching prices…"):
     prices_json = get_stock_prices(
         ticker=ticker,
@@ -27,49 +29,75 @@ with st.spinner("Fetching prices…"):
         end_date=dt.date.today().isoformat()
     )
 
+# collapsible section which will print the type fo prices_json, the keys,
+# and number of rows if it has prices. It shows the first 1000 character of the 
+# JSON. Can be used for debuggin when parsing fails
 with st.expander("Debug to see the shape"):
-    st.write(type(prices_json))
-    st.write(str(prices_json)[:1000])
+    st.write("type:", type(prices_json))
+    if isinstance(prices_json, dict):
+        st.write("keys:", list(prices_json.keys()))
+        if "prices" in prices_json and isinstance(prices_json["prices"], list):
+            st.write("len(prices):", len(prices_json["prices"]))
+    st.code(str(prices_json)[:1000])
 
+# helper funciton
 # converts JSON to a DataFrame
 def to_price_df(prices_json):
     if not prices_json:
         return None
 
-    # if JSON is a dict and starts with "data"
-    if isinstance(prices_json, dict) and "data" in prices_json:
-        rows = prices_json["data"]
-    # if JSON is already a list 
-    elif isinstance(prices_json, list):
-        rows = prices_json
+    # makes sure the data is a dict with a prices list
+    if not (isinstance(prices_json, dict) and isinstance(prices_json.get("prices"), list)):
+        return None
+    rows = prices_json["prices"]
+    if not rows:
+        return None
+    # turns the list of dicts into a df
+    df = pd.DataFrame(rows).copy()
+    if df.empty:
+        return None
+    
+    #normalize
+    df.columns = [str(c).lower() for c in df.columns]
+
+
+    # adds a date column from ISO timestamps or epoch ms
+    if "time" in df.columns:
+        df["date"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+    elif "time_milliseconds" in df.columns:
+        df["date"] = pd.to_datetime(df["time_milliseconds"], unit="ms", utc=True, errors="coerce")
     else:
         return None
 
-    # turn into table
-    df = pd.DataFrame(rows)  
 
-    # try to find a date column
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-    elif "timestamp" in df.columns:
-        df["date"] = pd.to_datetime(df["timestamp"])
-    else:
-        return None
-
-    # try to find a close column
-    for c in ["close", "adj_close", "c", "closing_price", "price"]:
+    # looks for the column that show closing proces of adjacent names
+    close_col = None
+    for c in ("close", "closing_price", "c", "adj_close", "price"):
         if c in df.columns:
-            df = df.sort_values("date")
-            return df[["date", c]].rename(columns={c: "close"})
+            close_col = c
+            break
+    if close_col is None:
+        return None
 
-    # if no usable columns
-    return None  
-    
+    # Cleans up final output
+    output = (
+        df.loc[:, ["date", close_col]]
+          .rename(columns={close_col: "close"})
+          .dropna(subset=["date", "close"])
+          .sort_values("date")
+          .drop_duplicates(subset=["date"])
+    )
+    if not output.empty:
+        return output
+    else:
+        None
 
-# Call to convert JSON
+# call to helper function
 df = to_price_df(prices_json)
-if df is None or df.empty:
     
+
+# If not parsed shows error box and stops running
+if df is None:
     st.error("No price data returned by your API. Try another ticker.")
     st.stop()
 
