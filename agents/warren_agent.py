@@ -1,7 +1,4 @@
-try:
-    from langchain.schema import SystemMessage, HumanMessage 
-except ImportError:
-    from langchain_core.messages import SystemMessage, HumanMessage
+from langchain.schema import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 import os, json
 
@@ -29,7 +26,6 @@ def _make_llm():
 llm_warren = _make_llm()
 
 def summarize_stock_data(ticker, prices, metrics, items, trades, news, facts) -> str:
-    """Summarize the fetched stock data to keep the prompt short."""
     prompt = (
         f"Summarize the following financial info for {ticker} in 6–8 short bullets. "
         f"Only include facts that affect an invest / don't invest decision.\n\n"
@@ -45,7 +41,6 @@ def summarize_stock_data(ticker, prices, metrics, items, trades, news, facts) ->
 # Will pull the data, summarize it, then asks Warren Buffet for a recommendation.
 # (can change dates/interval later)
 def warren_agent(ticker: str) -> str:
-    """Pull data, summarize it, then ask 'Warren agent' for a recommendation."""
     prices  = get_stock_prices(ticker, "day", 1, "2025-01-01", "2025-08-01")
     metrics = get_financial_metrics(ticker, "ttm")
     items   = get_line_items(ticker)
@@ -55,9 +50,17 @@ def warren_agent(ticker: str) -> str:
 
     data_summary = summarize_stock_data(ticker, prices, metrics, items, trades, news, facts)
 
-    system = SystemMessage(content="Answer as if you are Warren Buffett, my financial advisor.")
+    prompt = """Answer like Warren Buffet, my financial advisor. 
+    Look at this company like you’re thinking about holding it for years. Don’t 
+    just say “the fundamentals are good or bad.” Point out where they actually make money, 
+    what part of the business is strong or weak, and how that shows up in real numbers like 
+    revenue growth, profit margins, or debt. Also, talk about whether the stock price makes 
+    sense compared to what the company is really worth, instead of just repeating investor 
+    buzzwords."""
+    system = SystemMessage(content=prompt)
     user   = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
     return llm_warren.invoke([system, user]).content
+
 
 
 
