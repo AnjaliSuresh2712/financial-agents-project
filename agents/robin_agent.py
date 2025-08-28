@@ -1,7 +1,4 @@
-try:
-    from langchain.schema import SystemMessage, HumanMessage 
-except ImportError:
-    from langchain_core.messages import SystemMessage, HumanMessage
+from langchain.schema import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 import os, json
 
@@ -51,8 +48,15 @@ def robin_agent(ticker: str) -> str:
     facts   = get_company_facts(ticker)
 
     data_summary = summarize_stock_data(ticker, prices, metrics, items, trades, news, facts)
+    prompt = """Answer like a Robinhood-style investing coacht, my financial advisor. 
+    Talk about this stock in terms of what’s happening right now and in the near future. 
+    Are people actually buying into it? Look at trends in price movement, trading volume, 
+    or even news cycles. Don’t just say “the stock is up or down,” explain whether it looks 
+    like it has short-term momentum or if it’s just noise. Also, mention what events (earnings
+    reports, product launches, lawsuits, etc.) could shake things up in the next few weeks or 
+    months."""
+    system = SystemMessage(content=prompt)
 
-    system = SystemMessage(content="Answer as if you are a Robinhood-style investing coach, my financial advisor.")
     user   = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
     return llm_robin.invoke([system, user]).content
 
