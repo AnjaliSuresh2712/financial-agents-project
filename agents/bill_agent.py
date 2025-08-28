@@ -1,8 +1,5 @@
+from langchain.schema import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
-try:
-    from langchain.schema import SystemMessage, HumanMessage 
-except ImportError:
-    from langchain_core.messages import SystemMessage, HumanMessage
 import os, json
 
 # data helpers
@@ -46,7 +43,12 @@ def bill_agent(ticker: str) -> str:
     facts   = get_company_facts(ticker)
 
     data_summary = summarize_stock_data(ticker, prices, metrics, items, trades, news, facts)
-
+    prompt = """Answer as if you are a Bill Ackman, my financial advisor.
+    Break down where this company might run into real problems. I don’t want just generic risk 
+    factors that every stock has, but specific ones for this business — like regulations, 
+    supply chain issues, leadership decisions, or overdependence on one product.
+    Explain how those risks could actually affect earnings or growth, and whether management looks like they have a plan for it or not. Basically, what could go wrong here that people aren’t paying enough attention to?"""
+    system = SystemMessage(content=prompt)
     system = SystemMessage(content="Answer as if you are a Bill Ackman, my financial advisor.")
     user   = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
     return llm_bill.invoke([system, user]).content
