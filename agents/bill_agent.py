@@ -14,9 +14,9 @@ from data_api import (
 
 def _make_llm():
     return ChatOpenAI(
-        model="gpt-3.5-turbo",
+        model="gpt-4o-mini",  
         api_key=os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY"),
-        base_url=os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1"),
+        base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
     )
 
 llm_bill = _make_llm()
@@ -52,5 +52,6 @@ def bill_agent(ticker: str) -> str:
     system = SystemMessage(content="Answer as if you are a Bill Ackman, my financial advisor.")
     user   = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
     return llm_bill.invoke([system, user]).content
+
 
 
