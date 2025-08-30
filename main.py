@@ -32,10 +32,11 @@ if __name__ == "__main__":
     test_cases = [
         ("AAPL", "Should I invest in Apple?"),
         ("TSLA", "Should I invest in Tesla?"),
-        ("AMZN", "Should I buy Amazon stock right now?")
+        ("HON", "Should I invest in Honeywell?")
     ]
     for ticker, question in test_cases:
         run_all_agents(ticker, question)
+
 
 
 
