@@ -16,11 +16,10 @@ from data_api import (
 # Uses gpt-3.5-turbo model via OpenRouter.
 # Points to OpenRouter’s API endpoint, which proxies requests to the gpt model.
 def _make_llm():
-    """Construct the LLM client using env vars."""
     return ChatOpenAI(
-        model="gpt-3.5-turbo",
+        model="gpt-4o-mini",  
         api_key=os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY"),
-        base_url=os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1"),
+        base_url=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
     )
 
 llm_warren = _make_llm()
@@ -60,6 +59,7 @@ def warren_agent(ticker: str) -> str:
     system = SystemMessage(content=prompt)
     user   = HumanMessage(content=f"Summary for {ticker}:\n{data_summary}\n\nShould I invest in {ticker}? Answer concisely.")
     return llm_warren.invoke([system, user]).content
+
 
 
 
