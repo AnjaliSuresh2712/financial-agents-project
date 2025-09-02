@@ -29,13 +29,9 @@ def run_all_agents(ticker: str, question: str):
 
 # test cases for now
 if __name__ == "__main__":
-    test_cases = [
-        ("AAPL", "Should I invest in Apple?"),
-        ("TSLA", "Should I invest in Tesla?"),
-        ("HON", "Should I invest in Honeywell?")
-    ]
-    for ticker, question in test_cases:
-        run_all_agents(ticker, question)
+    ticker = input("Enter a stock ticker (e.g., AAPL, TSLA, HON): ").strip().upper()
+    question = f"Should I invest in {ticker}?"
+    run_all_agents(ticker, question)
 
 
 
