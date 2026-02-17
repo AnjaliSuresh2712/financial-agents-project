@@ -2,10 +2,10 @@ from langgraph.graph import StateGraph, END
 from typing import TypedDict, List, Optional, Dict, Any
 from datetime import datetime
 import json
+import re
 
-from agents.warren_agent import warren_agent_with_data
-from agents.bill_agent import bill_agent_with_data
-from agents.robin_agent import robin_agent_with_data
+from agents.registry import AGENTS
+from agents.data_quality import summarize_data_coverage, collect_data_warnings
 from data_api import (
     get_stock_prices,
     get_financial_metrics,
@@ -13,6 +13,7 @@ from data_api import (
     get_insider_trades,
     get_news,
     get_company_facts,
+    default_date_range,
 )
 
 # State for the agents 
@@ -27,6 +28,9 @@ class AgentState(TypedDict):
     warren_result: str
     bill_result: str
     robin_result: str
+    bias_result: str
+    data_coverage: Dict[str, Any]
+    data_warnings: List[str]
     timestamp: str
 
 # NODE 1: Fetch all financial data for the ticker
@@ -38,7 +42,8 @@ def fetch_data_node(state: AgentState) -> AgentState:
     start = datetime.now()
     
     # Fetch all data sources and return Pydantic objects
-    prices = get_stock_prices(ticker, "day", 1, "2025-01-01", "2025-10-04")
+    start_date, end_date = default_date_range(365)
+    prices = get_stock_prices(ticker, "day", 1, start_date, end_date)
     metrics = get_financial_metrics(ticker, "ttm")
     items = get_line_items(ticker)
     trades = get_insider_trades(ticker)
@@ -55,85 +60,42 @@ def fetch_data_node(state: AgentState) -> AgentState:
     print(f"  - Facts: {'Available' if facts else 'N/A'}")
     
     # Convert Pydantic models to dicts
-    return {
-        **state,
+    data = {
         "prices": [p.model_dump() for p in prices],
         "metrics": [m.model_dump() for m in metrics],
         "items": [i.model_dump() for i in items],
         "trades": [t.model_dump() for t in trades],
         "news": [n.model_dump() for n in news],
         "facts": facts.model_dump() if facts else {},
+    }
+    data_coverage = summarize_data_coverage(data)
+    data_warnings = collect_data_warnings(data)
+
+    return {
+        **state,
+        "prices": data["prices"],
+        "metrics": data["metrics"],
+        "items": data["items"],
+        "trades": data["trades"],
+        "news": data["news"],
+        "facts": data["facts"],
+        "data_coverage": data_coverage,
+        "data_warnings": data_warnings,
         "timestamp": datetime.now().isoformat()
     }
 
-# NODE 2: Warren Buffett Agent
-def warren_node(state: AgentState) -> AgentState:
-    """Runs Warren Buffett value analysis."""
-    print(f"\n{'='*50}")
-    print("[WARREN AGENT] Analyzing long-term value...")
-    print(f"{'='*50}")
-    
-    data = {
-        "prices": state["prices"],
-        "metrics": state["metrics"],
-        "items": state["items"],
-        "trades": state["trades"],
-        "news": state["news"],
-        "facts": state["facts"]
-    }
-    
-    start = datetime.now()
-    result = warren_agent_with_data(state["ticker"], data)
-    elapsed = (datetime.now() - start).total_seconds()
-    
-    print(f"\n[WARREN AGENT] Complete in {elapsed:.2f}s")
-    return {"warren_result": result}
+def make_agent_node(agent):
+    def node(state: AgentState) -> AgentState:
+        print(f"\n{'='*50}")
+        print(f"[{agent.key.upper()}] {agent.title}")
+        print(f"{'='*50}")
+        start = datetime.now()
+        result = agent.run(state)
+        elapsed = (datetime.now() - start).total_seconds()
+        print(f"\n[{agent.key.upper()}] Complete in {elapsed:.2f}s")
+        return result
 
-# NODE 3: Bill Ackman Agent
-def bill_node(state: AgentState) -> AgentState:
-    """Runs Bill Ackman risk analysis."""
-    print(f"\n{'='*50}")
-    print("[BILL AGENT] Analyzing risks and catalysts...")
-    print(f"{'='*50}")
-    
-    data = {
-        "prices": state["prices"],
-        "metrics": state["metrics"],
-        "items": state["items"],
-        "trades": state["trades"],
-        "news": state["news"],
-        "facts": state["facts"]
-    }
-    
-    start = datetime.now()
-    result = bill_agent_with_data(state["ticker"], data)
-    elapsed = (datetime.now() - start).total_seconds()
-    
-    print(f"\n[BILL AGENT] Complete in {elapsed:.2f}s")
-    return {"bill_result": result}
-
-# NODE 4: Robinhood Coach Agent
-def robin_node(state: AgentState) -> AgentState:
-    """Runs Robinhood momentum analysis."""
-    print(f"\n{'='*50}")
-    print("[ROBIN AGENT] Analyzing short-term momentum...")
-    print(f"{'='*50}")
-    
-    data = {
-        "prices": state["prices"],
-        "metrics": state["metrics"],
-        "items": state["items"],
-        "trades": state["trades"],
-        "news": state["news"],
-        "facts": state["facts"]
-    }
-    
-    start = datetime.now()
-    result = robin_agent_with_data(state["ticker"], data)
-    elapsed = (datetime.now() - start).total_seconds()
-    
-    print(f"\n[ROBIN AGENT] Complete in {elapsed:.2f}s")
-    return {"robin_result": result}
+    return node
 
 # Build the graph
 def build_graph():
@@ -142,37 +104,76 @@ def build_graph():
     
     # Add all nodes
     workflow.add_node("fetch_data", fetch_data_node)
-    workflow.add_node("warren", warren_node)
-    workflow.add_node("bill", bill_node)
-    workflow.add_node("robin", robin_node)
+    for agent in AGENTS:
+        workflow.add_node(agent.key, make_agent_node(agent))
     
     # Set entry point
     workflow.set_entry_point("fetch_data")
     
-    # Define edges - parallel execution after fetch_data
-    # All three agents run simultaneously after data is fetched
-    workflow.add_edge("fetch_data", "warren")
-    workflow.add_edge("fetch_data", "bill")
-    workflow.add_edge("fetch_data", "robin")
-    
-    # All agents converge to END
-    workflow.add_edge("warren", END)
-    workflow.add_edge("bill", END)
-    workflow.add_edge("robin", END)
+    for agent in AGENTS:
+        if agent.depends_on:
+            for dependency in agent.depends_on:
+                workflow.add_edge(dependency, agent.key)
+        else:
+            workflow.add_edge("fetch_data", agent.key)
+
+    depended_on = {dependency for agent in AGENTS for dependency in agent.depends_on}
+    for agent in AGENTS:
+        if agent.key not in depended_on:
+            workflow.add_edge(agent.key, END)
     
     return workflow.compile()
 
 def divider(title: str):
-    """Print a nice divider."""
     print(f"\n{'='*60}")
     print(f" {title}")
     print(f"{'='*60}")
+
+def build_markdown_report(output: Dict[str, Any]) -> str:
+    data_summary = output.get("data_summary", {})
+    analyses = output.get("analyses", {})
+    warnings = data_summary.get("warnings") or []
+
+    lines = []
+    lines.append(f"# Analysis for {output.get('ticker', 'UNKNOWN')}")
+    lines.append("")
+    lines.append(f"Timestamp: {output.get('timestamp')}")
+    lines.append(f"Total time: {output.get('total_time_seconds'):.2f} seconds")
+    lines.append("")
+    lines.append("## Data Summary")
+    lines.append(f"- Prices count: {data_summary.get('prices_count')}")
+    lines.append(f"- Metrics count: {data_summary.get('metrics_count')}")
+    lines.append(f"- News count: {data_summary.get('news_count')}")
+    lines.append(f"- Trades count: {data_summary.get('trades_count')}")
+    lines.append(f"- Coverage: {json.dumps(data_summary.get('coverage', {}))}")
+    if warnings:
+        lines.append("### Data Warnings")
+        for warning in warnings:
+            lines.append(f"- {warning}")
+    else:
+        lines.append("- Data warnings: None")
+
+    lines.append("")
+    lines.append("## Warren Buffett - Value Analysis")
+    lines.append(analyses.get("warren_buffett", "No result available"))
+    lines.append("")
+    lines.append("## Bill Ackman - Risk Analysis")
+    lines.append(analyses.get("bill_ackman", "No result available"))
+    lines.append("")
+    lines.append("## Robinhood Coach - Momentum Analysis")
+    lines.append(analyses.get("robinhood_coach", "No result available"))
+    lines.append("")
+    lines.append("## Bias Audit")
+    lines.append(analyses.get("bias_audit", "No result available"))
+    lines.append("")
+
+    return "\n".join(lines)
 
 def run_analysis(ticker: str):
     """Main function to run the multi-agent analysis."""
     overall_start = datetime.now()
     
-    divider(f"MULTI-AGENT ANALYSIS FOR {ticker}")
+    divider(f"ANALYSIS FOR {ticker}")
     
     # Build and run the graph
     graph = build_graph()
@@ -183,23 +184,22 @@ def run_analysis(ticker: str):
     result = graph.invoke(initial_state)
     
     # Display results
-    divider("WARREN BUFFETT - VALUE ANALYSIS")
-    print(result.get("warren_result", "No result available"))
-    
-    divider("BILL ACKMAN - RISK ANALYSIS")
-    print(result.get("bill_result", "No result available"))
-    
-    divider("ROBINHOOD COACH - MOMENTUM ANALYSIS")
-    print(result.get("robin_result", "No result available"))
+    for agent in AGENTS:
+        divider(agent.title)
+        print(result.get(agent.result_key, "No result available"))
     
     # Calculate total time
     total_time = (datetime.now() - overall_start).total_seconds()
     
     divider("PERFORMANCE SUMMARY")
     print(f"Total Analysis Time: {total_time:.2f} seconds")
-    print(f"Timestamp: {result.get('timestamp')}")
+    if result.get("data_warnings"):
+        divider("DATA WARNINGS")
+        for warning in result.get("data_warnings", []):
+            print(f"- {warning}")
     
     # Save to file
+    analyses = {agent.output_key: result.get(agent.result_key) for agent in AGENTS}
     output = {
         "ticker": ticker,
         "timestamp": result.get("timestamp"),
@@ -208,34 +208,35 @@ def run_analysis(ticker: str):
             "prices_count": len(result.get("prices", [])),
             "metrics_count": len(result.get("metrics", [])),
             "news_count": len(result.get("news", [])),
-            "trades_count": len(result.get("trades", []))
+            "trades_count": len(result.get("trades", [])),
+            "coverage": result.get("data_coverage", {}),
+            "warnings": result.get("data_warnings", []),
         },
-        "analyses": {
-            "warren_buffett": result.get("warren_result"),
-            "bill_ackman": result.get("bill_result"),
-            "robinhood_coach": result.get("robin_result")
-        }
+        "analyses": analyses,
     }
     
-    filename = f"analysis_{ticker}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(filename, "w") as f:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    json_filename = f"analysis_{ticker}_{timestamp}.json"
+    md_filename = f"analysis_{ticker}_{timestamp}.md"
+    with open(json_filename, "w") as f:
         json.dump(output, f, indent=2)
+    with open(md_filename, "w") as f:
+        f.write(build_markdown_report(output))
     
-    print(f"\nAnalysis saved to: {filename}")
+    print(f"\nAnalysis saved to: {md_filename}")
+    print(f"Raw data saved to: {json_filename}")
     
     return result
 
 # test cases
 if __name__ == "__main__":
-    print("\n" + "="*60)
-    print(" AI FINANCIAL ADVISORY SYSTEM")
-    print(" Multi-Agent Analysis with LangGraph")
-    print("="*60)
-    
     ticker = input("\nEnter a stock ticker (e.g., AAPL, TSLA, NVDA): ").strip().upper()
     
     if not ticker:
         print("Error: No ticker provided")
+        exit(1)
+    if not re.fullmatch(r"[A-Z0-9.-]{1,7}", ticker):
+        print("Error: Invalid ticker format")
         exit(1)
     
     try:

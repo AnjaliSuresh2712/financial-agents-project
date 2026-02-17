@@ -2,6 +2,13 @@ import requests
 from pydantic import BaseModel, ValidationError
 from typing import List, Optional
 from tenacity import retry, stop_after_attempt, wait_fixed
+from datetime import datetime, timedelta
+
+
+def default_date_range(days: int = 365):
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=days)
+    return start_date.isoformat(), end_date.isoformat()
 
 # Pydantic models 
 class Price(BaseModel):
