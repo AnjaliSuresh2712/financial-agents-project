@@ -1,11 +1,25 @@
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, List, Optional, Dict, Any
 from datetime import datetime
+from pathlib import Path
 import json
 import re
 
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None  # type: ignore[assignment]
+
+if load_dotenv is not None:
+    project_root = Path(__file__).resolve().parent
+    load_dotenv(project_root / ".env")
+    load_dotenv(project_root / "backend/.env")
+
 from agents.registry import AGENTS
 from agents.data_quality import summarize_data_coverage, collect_data_warnings
+from agents.claim_verifier import compute_feature_signals, verify_analysis_claims
+from agents.decision_policy import compute_final_policy
+from agents.reliability import parse_structured_analysis, summary_payload
 from data_api import (
     get_stock_prices,
     get_financial_metrics,
@@ -31,6 +45,9 @@ class AgentState(TypedDict):
     bias_result: str
     data_coverage: Dict[str, Any]
     data_warnings: List[str]
+    structured_analyses: Dict[str, Any]
+    claim_verification: Dict[str, Any]
+    final_policy: Dict[str, Any]
     timestamp: str
 
 # NODE 1: Fetch all financial data for the ticker
@@ -132,6 +149,9 @@ def divider(title: str):
 def build_markdown_report(output: Dict[str, Any]) -> str:
     data_summary = output.get("data_summary", {})
     analyses = output.get("analyses", {})
+    structured = output.get("structured_analyses", {})
+    policy = output.get("final_policy", {})
+    verification = output.get("claim_verification", {})
     warnings = data_summary.get("warnings") or []
 
     lines = []
@@ -154,14 +174,47 @@ def build_markdown_report(output: Dict[str, Any]) -> str:
         lines.append("- Data warnings: None")
 
     lines.append("")
+    lines.append("## Final Policy Decision")
+    lines.append(f"- Recommendation: {policy.get('final_recommendation', 'N/A')}")
+    lines.append(f"- Confidence: {policy.get('confidence', 'N/A')}")
+    lines.append(f"- Adjusted Score: {policy.get('adjusted_policy_score', 'N/A')}")
+    if policy.get("abstain_reasons"):
+        lines.append("### Abstain Reasons")
+        for reason in policy.get("abstain_reasons", []):
+            lines.append(f"- {reason}")
+    lines.append("### Verification Summary")
+    for advisor, summary in verification.items():
+        lines.append(
+            f"- {advisor}: {summary.get('verified_claim_count', 0)}/{summary.get('claim_count', 0)} claims verified"
+        )
+
+    lines.append("")
     lines.append("## Warren Buffett - Value Analysis")
-    lines.append(analyses.get("warren_buffett", "No result available"))
+    warren_structured = structured.get("warren")
+    if warren_structured:
+        lines.append(f"- Recommendation: {warren_structured.get('recommendation', 'N/A')}")
+        lines.append(f"- Confidence: {warren_structured.get('confidence', 'N/A')}")
+        lines.append(f"- Thesis: {warren_structured.get('thesis', 'N/A')}")
+    else:
+        lines.append(analyses.get("warren_buffett", "No result available"))
     lines.append("")
     lines.append("## Bill Ackman - Risk Analysis")
-    lines.append(analyses.get("bill_ackman", "No result available"))
+    bill_structured = structured.get("bill")
+    if bill_structured:
+        lines.append(f"- Recommendation: {bill_structured.get('recommendation', 'N/A')}")
+        lines.append(f"- Confidence: {bill_structured.get('confidence', 'N/A')}")
+        lines.append(f"- Thesis: {bill_structured.get('thesis', 'N/A')}")
+    else:
+        lines.append(analyses.get("bill_ackman", "No result available"))
     lines.append("")
     lines.append("## Robinhood Coach - Momentum Analysis")
-    lines.append(analyses.get("robinhood_coach", "No result available"))
+    robin_structured = structured.get("robin")
+    if robin_structured:
+        lines.append(f"- Recommendation: {robin_structured.get('recommendation', 'N/A')}")
+        lines.append(f"- Confidence: {robin_structured.get('confidence', 'N/A')}")
+        lines.append(f"- Thesis: {robin_structured.get('thesis', 'N/A')}")
+    else:
+        lines.append(analyses.get("robinhood_coach", "No result available"))
     lines.append("")
     lines.append("## Bias Audit")
     lines.append(analyses.get("bias_audit", "No result available"))
@@ -182,11 +235,73 @@ def run_analysis(ticker: str):
     print("\n[LANGGRAPH] Starting workflow execution...")
     initial_state = {"ticker": ticker}
     result = graph.invoke(initial_state)
+
+    shared_data = {
+        "prices": result.get("prices", []),
+        "metrics": result.get("metrics", []),
+        "items": result.get("items", []),
+        "trades": result.get("trades", []),
+        "news": result.get("news", []),
+        "facts": result.get("facts", {}),
+    }
+    feature_signals = compute_feature_signals(shared_data)
+    structured_analyses: Dict[str, Any] = {}
+    claim_verification: Dict[str, Any] = {}
+    advisor_keys = {"warren", "bill", "robin"}
+
+    for agent in AGENTS:
+        if agent.key not in advisor_keys:
+            continue
+        allowed_keys = agent.allowed_evidence_keys() if hasattr(agent, "allowed_evidence_keys") else None
+        min_claims = agent.min_claim_count() if hasattr(agent, "min_claim_count") else 0
+        parsed = parse_structured_analysis(
+            raw=result.get(agent.result_key, ""),
+            agent=agent.key,
+            ticker=ticker,
+            allowed_evidence_keys=allowed_keys,
+            min_claims=min_claims,
+        )
+        structured_analyses[agent.key] = summary_payload(parsed)
+        claim_verification[agent.key] = verify_analysis_claims(parsed, feature_signals)
+
+    final_policy = compute_final_policy(
+        analyses=structured_analyses,
+        verification=claim_verification,
+        data_coverage=result.get("data_coverage", {}),
+        data_warnings=result.get("data_warnings", []),
+    )
+    result["structured_analyses"] = structured_analyses
+    result["claim_verification"] = claim_verification
+    result["final_policy"] = final_policy
     
     # Display results
     for agent in AGENTS:
         divider(agent.title)
-        print(result.get(agent.result_key, "No result available"))
+        if agent.key in advisor_keys:
+            structured_result = structured_analyses.get(agent.key, {})
+            print(f"Recommendation: {structured_result.get('recommendation', 'N/A')}")
+            print(f"Confidence: {structured_result.get('confidence', 'N/A')}")
+            print(f"Thesis: {structured_result.get('thesis', 'N/A')}")
+            for idx, caveat in enumerate(structured_result.get("caveats", [])[:3], start=1):
+                print(f"Caveat {idx}: {caveat}")
+        else:
+            print(result.get(agent.result_key, "No result available"))
+
+    divider("FINAL POLICY DECISION")
+    print(f"Recommendation: {final_policy.get('final_recommendation')}")
+    print(f"Confidence: {final_policy.get('confidence')}")
+    print(f"Adjusted Score: {final_policy.get('adjusted_policy_score')}")
+    if final_policy.get("abstain_reasons"):
+        print("Abstain Reasons:")
+        for reason in final_policy.get("abstain_reasons", []):
+            print(f"- {reason}")
+
+    divider("CLAIM VERIFICATION SUMMARY")
+    for advisor, summary in claim_verification.items():
+        verified = summary.get("verified_claim_count", 0)
+        total = summary.get("claim_count", 0)
+        rate = summary.get("verification_rate", 0.0)
+        print(f"- {advisor}: {verified}/{total} verified (rate={rate:.2f})")
     
     # Calculate total time
     total_time = (datetime.now() - overall_start).total_seconds()
@@ -213,6 +328,9 @@ def run_analysis(ticker: str):
             "warnings": result.get("data_warnings", []),
         },
         "analyses": analyses,
+        "structured_analyses": result.get("structured_analyses", {}),
+        "claim_verification": result.get("claim_verification", {}),
+        "final_policy": result.get("final_policy", {}),
     }
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

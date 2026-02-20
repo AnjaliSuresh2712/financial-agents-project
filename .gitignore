@@ -186,4 +186,22 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Project runtime artifacts
+.DS_Store
+analysis_*.json
+analysis_*.md
+analysis_runs.db
+*.db
+frontend/node_modules/
+frontend/dist/
+
+# Local environment files
+.env.*
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
 

@@ -6,7 +6,7 @@ from agents.data_quality import summarize_data_coverage, collect_data_warnings
 
 class BillAgent(AdvisorAgent):
     key = "bill"
-    title = "BILL ACKMAN - RISK ANALYSIS"
+    title = "BILL ACKMAN"
     result_key = "bill_result"
     output_key = "bill_ackman"
     system_prompt = """Answer as if you are Bill Ackman, my financial advisor.
@@ -19,6 +19,20 @@ aren't paying enough attention to? If data coverage is limited or warnings are p
 explicitly say so and avoid a definitive recommendation. End with:
 Confidence: Low/Medium/High
 Key assumptions: 1-3 short bullets."""
+
+    def allowed_evidence_keys(self) -> list[str]:
+        return [
+            "debt_to_equity",
+            "earnings_growth",
+            "net_margin",
+            "news_count_30d",
+            "insider_net_buy",
+            "revenue_growth",
+            "operating_margin",
+        ]
+
+    def min_claim_count(self) -> int:
+        return 3
 
     def _insufficient_data_message(self, data: dict) -> str | None:
         if data.get("metrics") or data.get("news"):

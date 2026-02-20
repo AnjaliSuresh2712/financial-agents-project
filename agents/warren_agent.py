@@ -6,7 +6,7 @@ from agents.data_quality import summarize_data_coverage, collect_data_warnings
 
 class WarrenAgent(AdvisorAgent):
     key = "warren"
-    title = "WARREN BUFFETT - VALUE ANALYSIS"
+    title = "WARREN BUFFETT"
     result_key = "warren_result"
     output_key = "warren_buffett"
     system_prompt = """Answer like Warren Buffet, my financial advisor. 
@@ -19,6 +19,21 @@ buzzwords. If data coverage is limited or warnings are present, explicitly say s
 avoid a definitive recommendation. End with:
 Confidence: Low/Medium/High
 Key assumptions: 1-3 short bullets."""
+
+    def allowed_evidence_keys(self) -> list[str]:
+        return [
+            "revenue_growth",
+            "earnings_growth",
+            "operating_margin",
+            "net_margin",
+            "debt_to_equity",
+            "return_on_equity",
+            "insider_net_buy",
+            "price_trend_30d",
+        ]
+
+    def min_claim_count(self) -> int:
+        return 3
 
     def _insufficient_data_message(self, data: dict) -> str | None:
         if data.get("metrics") or data.get("items"):

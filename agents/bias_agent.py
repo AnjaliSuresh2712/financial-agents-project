@@ -1,5 +1,7 @@
 from agents.base import Agent
+from agents.claim_verifier import allowed_evidence_keys_for_agent
 from agents.data_quality import build_data_snapshot, collect_data_warnings
+from agents.reliability import parse_structured_analysis, summary_payload
 
 from langchain.schema import SystemMessage, HumanMessage
 import json
@@ -7,7 +9,7 @@ import json
 
 class BiasAuditAgent(Agent):
     key = "bias_audit"
-    title = "BIAS AUDIT - QUALITY CHECK"
+    title = "BIAS AUDIT"
     result_key = "bias_result"
     output_key = "bias_audit"
     depends_on = ["warren", "bill", "robin"]
@@ -61,11 +63,17 @@ class BiasAuditAgent(Agent):
             "data_coverage": state.get("data_coverage", {}),
             "data_warnings": state.get("data_warnings", []),
         }
-        agent_outputs = {
-            "warren": state.get("warren_result", ""),
-            "bill": state.get("bill_result", ""),
-            "robin": state.get("robin_result", ""),
-        }
+        agent_outputs = {}
+        for advisor in ["warren", "bill", "robin"]:
+            raw = state.get(f"{advisor}_result", "")
+            parsed = parse_structured_analysis(
+                raw=raw,
+                agent=advisor,
+                ticker=state["ticker"],
+                allowed_evidence_keys=allowed_evidence_keys_for_agent(advisor),
+                min_claims=3,
+            )
+            agent_outputs[advisor] = summary_payload(parsed)
         result = self.audit_with_data(state["ticker"], data, agent_outputs)
         return {self.result_key: result}
 

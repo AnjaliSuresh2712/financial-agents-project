@@ -7,6 +7,16 @@ import os
 
 from langchain.schema import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from agents.claim_verifier import (
+    AGENT_CLAIM_GUIDANCE,
+    allowed_evidence_keys_for_agent,
+)
+from agents.reliability import (
+    build_fallback_analysis,
+    parse_structured_analysis,
+    structured_output_instructions,
+    structured_to_json_text,
+)
 
 
 def make_llm() -> ChatOpenAI:
@@ -41,6 +51,15 @@ class AdvisorAgent(Agent):
     def _insufficient_data_message(self, data: Dict[str, Any]) -> str | None:
         return None
 
+    def allowed_evidence_keys(self) -> List[str]:
+        return allowed_evidence_keys_for_agent(self.key)
+
+    def min_claim_count(self) -> int:
+        return 3
+
+    def focus_hint(self) -> str:
+        return AGENT_CLAIM_GUIDANCE.get(self.key, "")
+
     def _summarize_data(self, ticker: str, data: Dict[str, Any]) -> str:
         prices = data.get("prices", [])
         metrics = data.get("metrics", [])
@@ -69,13 +88,41 @@ class AdvisorAgent(Agent):
     def analyze_with_data(self, ticker: str, data: Dict[str, Any]) -> str:
         insufficient = self._insufficient_data_message(data)
         if insufficient:
-            return insufficient
+            fallback = build_fallback_analysis(
+                agent=self.key,
+                ticker=ticker,
+                message=insufficient,
+                recommendation="hold",
+            )
+            return structured_to_json_text(fallback)
         summary = self._summarize_data(ticker, data)
+        allowed_keys = self.allowed_evidence_keys()
+        min_claims = self.min_claim_count()
         system = SystemMessage(content=self.system_prompt)
         user = HumanMessage(
-            content=self.user_prompt_template.format(ticker=ticker, summary=summary)
+            content=(
+                self.user_prompt_template.format(ticker=ticker, summary=summary)
+                + "\n\n"
+                + structured_output_instructions(
+                    allowed_evidence_keys=allowed_keys,
+                    min_claims=min_claims,
+                    focus_hint=self.focus_hint(),
+                )
+            )
         )
-        return self.llm.invoke([system, user]).content
+        raw = self.llm.invoke([system, user]).content
+        parsed = parse_structured_analysis(
+            raw=raw,
+            agent=self.key,
+            ticker=ticker,
+            allowed_evidence_keys=allowed_keys,
+            min_claims=min_claims,
+        )
+        if not parsed.claims:
+            parsed.caveats.append(
+                "No machine-verifiable claims were produced; confidence should be treated as low."
+            )
+        return structured_to_json_text(parsed)
 
     def run(self, state: Dict[str, Any]) -> Dict[str, Any]:
         data = {

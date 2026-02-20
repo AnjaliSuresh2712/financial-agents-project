@@ -100,6 +100,10 @@ def _find_numeric_anomalies(data: Dict[str, Any]) -> List[str]:
     prices = data.get("prices", [])
     metrics = data.get("metrics", [])
     trades = data.get("trades", [])
+    anomaly_counts: Dict[str, int] = {}
+
+    def bump(key: str) -> None:
+        anomaly_counts[key] = anomaly_counts.get(key, 0) + 1
 
     # Price sanity checks
     for idx, p in enumerate(prices[:50]):
@@ -110,18 +114,18 @@ def _find_numeric_anomalies(data: Dict[str, Any]) -> List[str]:
         volume = p.get("volume")
         for label, value in [("open", open_), ("close", close), ("high", high), ("low", low)]:
             if isinstance(value, (int, float)) and not isfinite(value):
-                warnings.append(f"Non-finite price {label} at index {idx}.")
+                bump(f"non_finite_price_{label}")
         if isinstance(volume, (int, float)) and volume < 0:
-            warnings.append(f"Negative volume at index {idx}.")
+            bump("negative_volume")
         if isinstance(high, (int, float)) and isinstance(low, (int, float)) and high < low:
-            warnings.append(f"Price high < low at index {idx}.")
+            bump("high_below_low")
         if (
             isinstance(close, (int, float))
             and isinstance(high, (int, float))
             and isinstance(low, (int, float))
             and (close < low or close > high)
         ):
-            warnings.append(f"Close outside high/low range at index {idx}.")
+            bump("close_out_of_range")
 
     # Metrics sanity checks
     latest_metrics = metrics[0] if metrics else {}
@@ -129,16 +133,55 @@ def _find_numeric_anomalies(data: Dict[str, Any]) -> List[str]:
         if not isinstance(value, (int, float)):
             continue
         if not isfinite(value):
-            warnings.append(f"Non-finite metric value for {key}.")
+            bump("non_finite_metric")
 
     # Insider trades sanity checks
-    for idx, t in enumerate(trades[:50]):
+    for t in trades[:50]:
         shares = t.get("shares")
         price = t.get("price")
-        if isinstance(shares, (int, float)) and shares < 0:
-            warnings.append(f"Negative insider shares at index {idx}.")
+
+        # Negative shares are valid for sells; only warn when sign and type conflict.
+        tx_type = (t.get("transaction_type") or "").lower()
+        if isinstance(shares, (int, float)):
+            if shares < 0 and ("buy" in tx_type or "acquire" in tx_type):
+                bump("insider_share_type_conflict")
+            if shares > 0 and ("sell" in tx_type or "dispose" in tx_type):
+                bump("insider_share_type_conflict")
         if isinstance(price, (int, float)) and price < 0:
-            warnings.append(f"Negative insider trade price at index {idx}.")
+            bump("negative_trade_price")
+
+    if anomaly_counts.get("negative_volume"):
+        warnings.append(
+            f"Detected {anomaly_counts['negative_volume']} price rows with negative volume."
+        )
+    if anomaly_counts.get("high_below_low"):
+        warnings.append(
+            f"Detected {anomaly_counts['high_below_low']} price rows where high < low."
+        )
+    if anomaly_counts.get("close_out_of_range"):
+        warnings.append(
+            f"Detected {anomaly_counts['close_out_of_range']} price rows with close outside high/low range."
+        )
+
+    non_finite_price_count = sum(
+        count for key, count in anomaly_counts.items() if key.startswith("non_finite_price_")
+    )
+    if non_finite_price_count:
+        warnings.append(
+            f"Detected {non_finite_price_count} non-finite price values in sampled rows."
+        )
+    if anomaly_counts.get("non_finite_metric"):
+        warnings.append(
+            f"Detected {anomaly_counts['non_finite_metric']} non-finite metric values."
+        )
+    if anomaly_counts.get("negative_trade_price"):
+        warnings.append(
+            f"Detected {anomaly_counts['negative_trade_price']} insider trades with negative price."
+        )
+    if anomaly_counts.get("insider_share_type_conflict"):
+        warnings.append(
+            f"Detected {anomaly_counts['insider_share_type_conflict']} insider trades with share-sign/type conflicts."
+        )
 
     return warnings
 

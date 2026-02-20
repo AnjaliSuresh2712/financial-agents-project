@@ -6,7 +6,7 @@ from agents.data_quality import summarize_data_coverage, collect_data_warnings
 
 class RobinAgent(AdvisorAgent):
     key = "robin"
-    title = "ROBINHOOD COACH - MOMENTUM ANALYSIS"
+    title = "ROBINHOOD COACH"
     result_key = "robin_result"
     output_key = "robinhood_coach"
     system_prompt = """Answer like a Robinhood-style investing coach, my financial advisor. 
@@ -19,6 +19,18 @@ months. If data coverage is limited or warnings are present, explicitly say so a
 a definitive recommendation. End with:
 Confidence: Low/Medium/High
 Key assumptions: 1-3 short bullets."""
+
+    def allowed_evidence_keys(self) -> list[str]:
+        return [
+            "price_trend_10d",
+            "price_trend_30d",
+            "news_count_30d",
+            "insider_net_buy",
+            "net_margin",
+        ]
+
+    def min_claim_count(self) -> int:
+        return 3
 
     def _insufficient_data_message(self, data: dict) -> str | None:
         if data.get("prices"):
