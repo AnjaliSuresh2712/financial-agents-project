@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Compile backend modules
+        run: |
+          python -m py_compile \
+            backend/app/api.py \
+            backend/app/db.py \
+            backend/app/models.py \
+            backend/app/schemas.py \
+            backend/app/service.py
+
+      - name: Verify migrations
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+        run: python -m alembic -c backend/alembic.ini upgrade head
+
+      - name: Run backend tests
+        run: python -m unittest discover -s backend/tests -p "test_*.py" -v

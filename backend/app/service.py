@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime
 
 from .db import SessionLocal
@@ -23,7 +22,7 @@ def run_analysis_job(run_id: str, ticker: str) -> None:
 
         result = run_analysis(ticker)
         run.status = "completed"
-        run.result_json = json.dumps(result, default=str)
+        run.result_json = result
         run.error = None
         run.updated_at = datetime.utcnow()
         db.commit()

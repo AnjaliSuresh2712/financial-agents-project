@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import re
 from pathlib import Path
@@ -17,7 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 load_dotenv(PROJECT_ROOT / "backend/.env")
 
-from .db import Base, engine, get_db
+from .db import get_db
 from .models import AnalysisRun
 from .schemas import (
     AnalysisCreateResponse,
@@ -44,8 +43,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-Base.metadata.create_all(bind=engine)
-
 
 def _status_payload(run: AnalysisRun, include_result: bool = False) -> dict[str, Any]:
     payload: dict[str, Any] = {
@@ -56,7 +53,7 @@ def _status_payload(run: AnalysisRun, include_result: bool = False) -> dict[str,
         "updated_at": run.updated_at,
     }
     if include_result:
-        payload["result"] = json.loads(run.result_json) if run.result_json else None
+        payload["result"] = run.result_json
         payload["error"] = run.error
     return payload
 

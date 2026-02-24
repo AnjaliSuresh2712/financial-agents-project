@@ -7,7 +7,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./analysis_runs.db")
+DEFAULT_POSTGRES_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/financial_agents"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_POSTGRES_URL)
+
+# Some platforms still provide postgres:// URLs.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(
